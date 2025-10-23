@@ -1,4 +1,4 @@
-<!DOCTYPE html>
+!DOCTYPE html>
 <html lang="ko">
 <head>
     <meta charset="UTF-8">
@@ -102,6 +102,7 @@
             pointer-events: none; /* 커서가 이벤트를 방해하지 않도록 */
             z-index: 1000;
             display: none; /* 기본 숨김 */
+            box-sizing: border-box; /* 중요: 커서 정렬 문제 수정 */
         }
     </style>
 </head>
@@ -200,6 +201,7 @@
 
             // --- 2. 상태 변수 ---
             let isDrawing = false;
+            let [lastX, lastY] = [0, 0]; // 마지막 좌표 (색연필 질감용)
             let currentColor = '#E11D48'; // 기본색 (빨강)
             let brushSize = 10;
             let brushOpacity = 0.5;
@@ -308,6 +310,9 @@
                 // ---
 
                 const { x, y } = getMousePos(e);
+                [lastX, lastY] = [x, y]; // 마지막 위치 저장
+                
+                // 그리기 시작점을 설정 (다른 도구용)
                 drawingCtx.beginPath();
                 drawingCtx.moveTo(x, y);
             }
@@ -334,32 +339,70 @@
                 e.preventDefault(); // 스크롤 방지
                 const { x, y } = getMousePos(e);
 
-                // 도구별 설정
-                if (currentTool === 'eraser') {
-                    drawingCtx.globalCompositeOperation = 'destination-out'; // 지우개
-                    drawingCtx.lineWidth = brushSize;
-                    drawingCtx.globalAlpha = 1; // 지우개는 항상 100%
-                } else {
-                    drawingCtx.globalCompositeOperation = 'source-over'; // 그리기
-                    drawingCtx.strokeStyle = currentColor;
-                    drawingCtx.lineWidth = brushSize;
+                // --- 1. 색연필 (거친 질감) ---
+                if (currentTool === 'pencil') {
+                    drawingCtx.globalCompositeOperation = 'source-over';
+                    drawingCtx.fillStyle = currentColor; // 색연필은 fill 사용
                     
-                    // 도구별 투명도 설정
-                    switch(currentTool) {
-                        case 'pencil':
-                            drawingCtx.globalAlpha = 0.8 * brushOpacity; // 색연필 (조금 진하게)
-                            break;
-                        case 'watercolor':
-                            drawingCtx.globalAlpha = 0.1 * brushOpacity; // 수채화 (연하게)
-                            break;
-                        case 'marker':
-                            drawingCtx.globalAlpha = 0.5 * brushOpacity; // 마카 (중간)
-                            break;
+                    // 여러 개의 점을 찍어 질감 표현
+                    // 이동 거리를 계산
+                    let dist = Math.hypot(x - lastX, y - lastY);
+                    if (dist < 1) dist = 1; // 최소 이동 거리
+                    
+                    for (let i = 0; i < dist; i += 1) {
+                        // 선형 보간으로 중간 지점 계산
+                        let newX = lastX + (x - lastX) * (i / dist);
+                        let newY = lastY + (y - lastY) * (i / dist);
+                        
+                        // 랜덤 오프셋 (거친 느낌)
+                        let offsetRange = brushSize * 0.4;
+                        let offsetX = (Math.random() - 0.5) * offsetRange;
+                        let offsetY = (Math.random() - 0.5) * offsetRange;
+                        
+                        // 랜덤 크기 (다양한 질감)
+                        let dabSize = (Math.random() * brushSize) / 3.5;
+                        if (dabSize < 1) dabSize = 1;
+
+                        // 랜덤 투명도 (겹치는 느낌)
+                        drawingCtx.globalAlpha = (Math.random() * 0.4) * brushOpacity; 
+
+                        drawingCtx.beginPath();
+                        drawingCtx.arc(newX + offsetX, newY + offsetY, dabSize, 0, Math.PI * 2);
+                        drawingCtx.fill();
                     }
+
+                // --- 2. 다른 도구들 (수채화, 마카, 지우개) ---
+                } else {
+                    drawingCtx.beginPath(); // 새 경로 시작
+                    drawingCtx.moveTo(lastX, lastY); // 이전 지점에서 시작
+
+                    if (currentTool === 'eraser') {
+                        drawingCtx.globalCompositeOperation = 'destination-out'; // 지우개
+                        drawingCtx.lineWidth = brushSize;
+                        drawingCtx.globalAlpha = 1; // 지우개는 항상 100%
+                    } else {
+                        // 마카, 수채화
+                        drawingCtx.globalCompositeOperation = 'source-over'; // 그리기
+                        drawingCtx.strokeStyle = currentColor;
+                        drawingCtx.lineWidth = brushSize;
+                        
+                        // 도구별 투명도 설정
+                        switch(currentTool) {
+                            case 'watercolor':
+                                drawingCtx.globalAlpha = 0.1 * brushOpacity; // 수채화 (연하게)
+                                break;
+                            case 'marker':
+                                drawingCtx.globalAlpha = 0.5 * brushOpacity; // 마카 (중간)
+                                break;
+                        }
+                    }
+                    
+                    drawingCtx.lineTo(x, y);
+                    drawingCtx.stroke();
                 }
-                
-                drawingCtx.lineTo(x, y);
-                drawingCtx.stroke();
+
+                // 모든 도구 공통: 마지막 위치 업데이트
+                [lastX, lastY] = [x, y];
             }
 
             function stopDrawing(e) {
