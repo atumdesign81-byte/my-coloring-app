@@ -1,727 +1,899 @@
+<!DOCTYPE html>
 <html lang="ko">
 <head>
     <meta charset="UTF-8">
-    <!-- 
-      [중요] user-scalable=no, viewport-fit=cover: 
-      모바일에서 확대/축소를 막고(CSS/JS로 직접 제어), 
-      터치 지연을 줄이며, 노치 디자인에서도 화면을 꽉 채웁니다.
-    -->
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
-    <title>AI 컬러링북</title>
-    
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>디지털 컬러링 프로그램</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <style>
-        /* HTML과 Body가 화면 전체를 차지하고 스크롤을 방지합니다.
-          모든 스크롤과 확대/축소는 JavaScript로 제어합니다.
-        */
-        html, body {
-            margin: 0;
-            padding: 0;
-            width: 100%;
-            height: 100%;
-            overflow: hidden; /* 페이지 레벨 스크롤 완전 방지 */
-            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
-            background-color: #f3f4f6; /* bg-gray-100 */
-        }
-        
-        #app-container {
-            display: flex;
-            flex-direction: column;
-            width: 100%;
-            height: 100%;
-            height: 100dvh; /* 모바일 주소창 포함 동적 높이 */
-        }
-
-        #canvas-container {
+        @import url('https://fonts.googleapis.com/css2?family=Noto+Sans+KR:wght@300;500;700&display=swap');
+        body { font-family: 'Noto Sans KR', sans-serif; background-color: #f4f4f7; } 
+        .canvas-container {
             position: relative;
             width: 100%;
-            height: 100%;
-            border-radius: 0.5rem;
-            overflow: hidden;
-            background: white; /* 도안이 없을 때 흰색 배경 */
-            
-            /* [중요] touch-action: none;
-              캔버스 영역에서 브라우저의 기본 터치 동작(스크롤, 줌, 뒤로가기 제스처 등)을
-              모두 비활성화합니다. 모든 터치 이벤트를 JavaScript로 직접 처리합니다.
-            */
-            touch-action: none; 
+            aspect-ratio: 210 / 297; /* A4 비율 (21cm x 29.7cm) 적용 */
+            margin: 0 auto;
+            box-shadow: 0 10px 30px rgba(0, 0, 0, 0.1);
+            border-radius: 1rem;
+            background-color: white; /* 캔버스 컨테이너 배경 */
         }
-        
         canvas {
             position: absolute;
             top: 0;
             left: 0;
             width: 100%;
             height: 100%;
-            
-            /* transform-origin: 0 0;
-              CSS의 transform(scale, translate)의 기준점을 좌측 상단으로 고정합니다.
-              JavaScript의 캔버스 줌 로직과 일치시키기 위함입니다.
-            */
-            transform-origin: 0 0;
+            cursor: none; /* 실제 마우스 커서를 숨기고 커스텀 커서 사용 */
+            touch-action: none; /* 모바일에서 기본 스크롤 막기 */
         }
-        
-        /* [핵심] mix-blend-mode: multiply;
-          색칠 캔버스(위)가 도안 캔버스(아래)와 겹칠 때,
-          어두운 색(도안의 검은 선)이 항상 위로 보이도록 합니다.
-        */
-        #drawing-canvas {
-            mix-blend-mode: multiply;
+        #drawCanvas {
+            mix-blend-mode: multiply; /* **핵심: 포토샵의 멀티플라이어 모드 구현** (Layer 2) */
         }
-        
-        /* 사용자 정의 브러시 커서
-        */
-        #custom-cursor {
-            position: fixed;
-            border: 2px solid black;
+        #brushCursor {
+            position: absolute;
+            pointer-events: none; /* 커서가 캔버스를 가로막지 않도록 */
             border-radius: 50%;
-            pointer-events: none; /* 커서가 클릭 이벤트를 방해하지 않도록 */
-            display: none; /* 기본 숨김 (PC에서만 보임) */
-            z-index: 10000;
-            box-sizing: border-box; /* 테두리를 크기에 포함 (중앙 정렬) */
-            backdrop-filter: invert(100%); /* 배경과 색 반전 */
+            border: 2px solid rgba(0, 0, 0, 0.5);
+            /* 중앙 정렬을 위해 CSS transform 사용 (성능 및 일관성 우수) */
+            transform: translate(-50%, -50%); 
+            transition: opacity 0.05s ease-out; /* 부드러운 전환 효과 추가 */
+            z-index: 100;
+            display: none; /* 초기에 숨김 */
+        }
+        .tool-button { transition: all 0.1s; }
+        .tool-button.active { background-color: #3b82f6; color: white; box-shadow: 0 4px 6px -1px rgba(59, 130, 246, 0.3); }
+
+        /* 모바일 팔레트 (12x2열 강제) */
+        #colorPaletteMobileWrapper {
+            display: grid; /* Grid 사용 */
+            grid-template-columns: repeat(12, 1fr); /* 12개의 균등한 열 강제 */
+            gap: 0.25rem; /* 간격 최소화 */
+            width: 100%;
+        }
+        #colorPaletteMobileWrapper > button {
+            width: 16px; /* w-4 (16px) 크기 적용 */
+            height: 16px; /* h-4 (16px) 크기 적용 */
+        }
+
+        /* 모바일 팔레트 전체 폭 조절 */
+        #mobileTopPalette { /* ID 이름 변경: 모바일 상단 팔레트 */
+            display: flex; /* 모바일에서만 flex로 표시 */
+            flex-direction: column;
+            align-items: center;
+            width: 100%;
+            padding: 0.5rem;
+            background-color: white;
+            border-radius: 1rem;
+            box-shadow: 0 10px 30px rgba(0, 0, 0, 0.1);
         }
         
-        /* 툴/색상 버튼의 선택 효과
-        */
-        .tool-btn, .color-btn {
-            border: 2px solid transparent;
-            transition: all 0.2s;
+        /* 모바일 하단 버튼 1열 정렬 */
+        #mobileButtonRow {
+            display: flex;
+            justify-content: space-around; /* 버튼 사이에 공간 균등 분배 */
+            gap: 0.5rem;
+            width: 100%;
+            padding: 0.5rem;
         }
-        .tool-btn.active, .color-btn.active {
-            border-color: #3B82F6; /* 파란색 테두리 */
-            transform: scale(1.1);
-            box-shadow: 0 4px 6px rgba(0,0,0,0.1);
-        }
-        
-        /* 모바일에서 하단 버튼 영역이 잘리지 않도록 (노치 등)
-        */
-        #bottom-bar {
-            padding-bottom: env(safe-area-inset-bottom, 0.75rem); /* 0.75rem = p-3 */
-        }
+
     </style>
 </head>
-<body class="bg-gray-100 h-screen flex flex-col overflow-hidden"> 
+<body class="p-4 md:p-8 min-h-screen">
 
-    <!-- 맞춤형 브러시 커서 (PC용) -->
-    <div id="custom-cursor"></div>
+    <!-- Custom Brush Cursor --><div id="brushCursor" style="background-color: rgba(255, 255, 255, 0.2);"></div>
 
-    <!-- 상태 메시지 (저장 완료 등) -->
-    <div id="message-box" class="fixed top-5 left-1/2 -translate-x-1/2 bg-blue-500 text-white px-6 py-3 rounded-lg shadow-lg z-50 transition-all opacity-0 -translate-y-10">
-        메시지
-    </div>
+    <div id="app" class="flex flex-col space-y-4">
 
-    <!-- 앱 전체 컨테이너 -->
-    <div id="app-container" class="h-full">
-
-        <!-- 1. 상단: 컬러 팔레트 -->
-        <div id="color-palette" class="w-full bg-white p-2 flex justify-center items-center flex-wrap shadow-md z-10 overflow-x-auto">
-            <!-- 24색 버튼이 JavaScript로 채워질 곳 -->
+        <!-- 1. Mobile Top Palette (NEW LOCATION & STRUCTURE) -->
+        <div id="mobileTopPalette" class="flex flex-col space-y-3 mt-4 hidden md:!hidden"> 
+            <h2 class="text-base font-bold text-gray-700 text-center">색상 팔레트</h2>
+            <!-- 12x2 Grid 적용된 팔레트 -->
+            <div id="colorPaletteMobileWrapper">
+                <!-- Color buttons inserted here by JS -->
+            </div>
+            <input type="color" id="customColorPickerMobile" value="#000000" class="w-8 h-8 p-0.5 border-none rounded-full cursor-pointer transition duration-150 ease-in-out hover:scale-105 mx-auto mt-2" title="사용자 지정 색상">
         </div>
-
-        <!-- 2. 중단: 메인 작업 영역 -->
-        <div class="flex-1 flex flex-col md:flex-row p-2 md:p-4 gap-2 md:gap-4 overflow-hidden"> 
-
-            <!-- 2-1. 왼쪽: 툴바 -->
-            <div class="flex md:flex-col justify-center items-center md:items-start md:w-20 bg-white p-2 rounded-lg shadow-lg gap-3">
-                <button class="tool-btn w-12 h-12 rounded-lg text-2xl flex justify-center items-center" data-tool="pencil" title="색연필">✏️</button>
-                <button class="tool-btn w-12 h-12 rounded-lg text-2xl flex justify-center items-center" data-tool="watercolor" title="수채화">💧</button>
-                <button class="tool-btn w-12 h-12 rounded-lg text-2xl flex justify-center items-center" data-tool="marker" title="마카">🖊️</button>
-                <button class="tool-btn w-12 h-12 rounded-lg text-2xl flex justify-center items-center" data-tool="eraser" title="지우개">⚪</button>
+        
+        <!-- 2. PC Palette (Top) / Mobile Tools & Settings (Top) --><div class="flex flex-col space-y-4 md:space-y-0">
+            
+            <!-- 2a. PC Palette (Top, Full Width) - Visible on MD and above --><div id="pcPalette" class="bg-white p-4 rounded-xl shadow-lg flex-wrap justify-center space-x-2 hidden md:flex w-full">
+                <h2 class="text-xl font-bold w-full text-center mb-3 text-gray-700">색상 팔레트</h2>
+                <div id="colorPalettePC" class="flex flex-wrap justify-center gap-2"></div>
+                <input type="color" id="customColorPickerPC" value="#000000" class="w-10 h-10 p-0.5 border-none rounded-full cursor-pointer transition duration-150 ease-in-out hover:scale-105" title="사용자 지정 색상">
             </div>
 
-            <!-- 2-2. 중앙: 캔버스 -->
-            <div class="flex-1 flex justify-center items-center relative" style="min-height: 50vh;">
-                <div id="canvas-container" class="aspect-video w-full max-w-4xl shadow-inner">
-                    <!-- 도안 캔버스 (아래) -->
-                    <canvas id="outline-canvas"></canvas> 
-                    <!-- 색칠 캔버스 (위) -->
-                    <canvas id="drawing-canvas"></canvas> 
-                </div>
-                
-                <!-- 확대/축소 비율 표시 -->
-                <div id="zoom-info" class="absolute bottom-2 left-1/2 -translate-x-1/2 bg-gray-700 text-white text-xs px-2 py-1 rounded-md opacity-80 z-20">
-                    100%
-                </div>
-            </div>
-
-            <!-- 2-3. 오른쪽: 브러시 설정 -->
-            <div class="flex md:flex-col justify-center items-center md:items-start md:w-48 bg-white p-4 rounded-lg shadow-lg gap-4">
-                <div>
-                    <label for="brush-size" class="block text-sm font-medium text-gray-700">브러시 크기</label>
-                    <input type="range" id="brush-size" min="1" max="100" value="10" class="w-full">
-                </div>
-                <div>
-                    <label for="brush-opacity" class="block text-sm font-medium text-gray-700">브러시 농도</label>
-                    <input type="range" id="brush-opacity" min="0.01" max="1" step="0.01" value="0.5" class="w-full">
+            <!-- 2b. Mobile Controls (Top, Full Width) - Visible below MD (Tools + Sliders) -->
+            <!-- 이 부분은 모바일 레이아웃의 도구/슬라이더입니다. -->
+            <div id="mobileControls" class="bg-white p-2 rounded-xl shadow-lg flex-col space-y-3 md:hidden">
+                <h3 class="text-base font-semibold text-gray-700 text-center mb-1">도구 및 설정</h3>
+                <!-- Brushes (Row) --><div id="mobileBrushes" class="flex flex-row flex-wrap justify-center gap-2 border-b pb-2">
+                    <!-- Brush buttons will be cloned and inserted here by JS --></div>
+                <!-- Size/Opacity (Row) --><div id="mobileSliders" class="flex flex-row justify-center items-center gap-4 p-2">
+                    <div class="flex-1 max-w-xs">
+                        <h3 class="text-sm font-semibold text-gray-700 mb-2 text-center">크기</h3>
+                        <input type="range" id="sizeSliderMobile" min="1" max="50" value="10" class="w-full h-2 bg-blue-100 rounded-lg appearance-none cursor-pointer range-lg">
+                        <span id="currentSizeValueMobile" class="text-xs text-gray-500 mt-1 block text-center">10</span>
+                    </div>
+                    <div class="flex-1 max-w-xs">
+                        <h3 class="text-sm font-semibold text-gray-700 mb-2 text-center">투명도</h3>
+                        <input type="range" id="opacitySliderMobile" min="0.1" max="1.0" step="0.01" value="1.0" class="w-full h-2 bg-blue-100 rounded-lg appearance-none cursor-pointer range-lg">
+                        <span id="currentOpacityValueMobile" class="text-xs text-gray-500 mt-1 block text-center">100%</span>
+                    </div>
                 </div>
             </div>
         </div>
 
-        <!-- 3. 하단: 파일 버튼 -->
-        <div id="bottom-bar" class="w-full bg-white p-3 flex justify-center items-center gap-4 shadow-inner z-10">
-            <label class="bg-blue-500 hover:bg-blue-600 text-white font-bold py-2 px-6 rounded-lg transition cursor-pointer">
-                <span>도안 불러오기</span>
-                <input type="file" id="image-loader" accept="image/*" class="hidden">
-            </label>
-            <button id="save-btn" class="bg-green-500 hover:bg-green-600 text-white font-bold py-2 px-6 rounded-lg transition">
-                저장
+
+        <!-- 3. Main Work Area (Canvas) --><div id="mainWorkArea" class="flex flex-1 gap-4 flex-row">
+            
+            <!-- 3a. PC Left Tool Panel (Brushes) - Vertical, Visible on MD and above --><div id="pcToolPanel" class="bg-white p-4 rounded-xl shadow-lg w-20 md:w-28 flex-col space-y-3 hidden md:flex">
+                <button id="brush-PencilPC" class="tool-button active p-2 md:p-3 rounded-lg text-xs md:text-sm flex flex-col items-center hover:bg-gray-100" data-brush="Pencil">
+                    ✏️<span class="mt-1">색연필</span>
+                </button>
+                <button id="brush-CrayonPC" class="tool-button p-2 md:p-3 rounded-lg text-xs md:text-sm flex flex-col items-center hover:bg-gray-100" data-brush="Crayon">
+                    🖍️<span class="mt-1">크레파스</span>
+                </button>
+                <button id="brush-WatercolorPC" class="tool-button p-2 md:p-3 rounded-lg text-xs md:text-sm flex flex-col items-center hover:bg-gray-100" data-brush="Watercolor">
+                    💧<span class="mt-1">수채화</span>
+                </button>
+                <button id="brush-MarkerPC" class="tool-button p-2 md:p-3 rounded-lg text-xs md:text-sm flex flex-col items-center hover:bg-gray-100" data-brush="Marker">
+                    🖊️<span class="mt-1">마카</span>
+                </button>
+                <button id="brush-EraserPC" class="tool-button p-2 md:p-3 rounded-lg text-xs md:text-sm flex flex-col items-center hover:bg-gray-100" data-brush="Eraser">
+                    🧼<span class="mt-1">지우개</span>
+                </button>
+            </div>
+
+            <!-- 3b. Canvas Area (Main Content) --><div class="flex-1 canvas-container">
+                <!-- Layer 1: Line Art / Imported Image (Bottom) --><canvas id="lineCanvas"></canvas>
+                <!-- Layer 2: User Drawing (Top) - mix-blend-mode: multiply 적용됨 --><canvas id="drawCanvas"></canvas>
+            </div>
+
+            <!-- 3c. PC Right Settings Panel (Size/Opacity) - Vertical, Visible on MD and above --><div id="pcSettingsPanel" class="bg-white p-4 rounded-xl shadow-lg w-20 md:w-28 flex-col space-y-6 hidden md:flex">
+                <div>
+                    <h3 class="text-sm font-semibold text-gray-700 mb-2">크기</h3>
+                    <input type="range" id="sizeSliderPC" min="1" max="50" value="10" class="w-full h-2 bg-blue-100 rounded-lg appearance-none cursor-pointer range-lg">
+                    <span id="currentSizeValuePC" class="text-xs text-gray-500 mt-1 block text-center">10</span>
+                </div>
+                <div>
+                    <h3 class="text-sm font-semibold text-gray-700 mb-2">투명도</h3>
+                    <input type="range" id="opacitySliderPC" min="0.1" max="1.0" step="0.01" value="1.0" class="w-full h-2 bg-blue-100 rounded-lg appearance-none cursor-pointer range-lg">
+                    <span id="currentOpacityValuePC" class="text-xs text-gray-500 mt-1 block text-center">100%</span>
+                </div>
+            </div>
+        </div>
+
+        <!-- 4. Mobile Bottom Button Row (NEW STRUCTURE) -->
+        <div id="mobileButtonRow" class="bg-white p-3 rounded-xl shadow-lg flex justify-center gap-2 mt-4 hidden md:!hidden"> 
+            <button id="loadFileBtn" class="bg-green-500 text-white font-semibold py-2 px-2 text-sm flex-1 rounded-lg hover:bg-green-600 transition duration-150 ease-in-out">
+                🖼️ 불러오기
             </button>
+            <button id="clearDrawingBtn" class="bg-yellow-500 text-white font-semibold py-2 px-2 text-sm flex-1 rounded-lg hover:bg-yellow-600 transition duration-150 ease-in-out">
+                🗑️ 그림 지우기
+            </button>
+            <button id="shareFileBtn" class="bg-purple-500 text-white font-semibold py-2 px-2 text-sm flex-1 rounded-lg hover:bg-purple-600 transition duration-150 ease-in-out">
+                🔗 공유하기
+            </button>
+        </div>
+
+
+        <!-- 5. PC Bottom Control Bar (File Operations) -->
+        <!-- PC에서만 보이고 모바일에서 숨김 처리됨 --><div class="bg-white p-4 rounded-xl shadow-lg flex flex-wrap justify-center gap-4 hidden md:flex">
+            <button id="loadFileBtnPC" class="bg-green-500 text-white font-semibold py-2 px-4 rounded-lg hover:bg-green-600 transition duration-150 ease-in-out">
+                🖼️ 불러오기
+            </button>
+            <button id="clearDrawingBtnPC" class="bg-yellow-500 text-white font-semibold py-2 px-4 rounded-lg hover:bg-yellow-600 transition duration-150 ease-in-out">
+                🗑️ 그림 지우기
+            </button>
+            <button id="saveFileBtnPC" class="bg-blue-500 text-white font-semibold py-2 px-4 rounded-lg hover:bg-blue-600 transition duration-150 ease-in-out">
+                💾 그림 저장하기
+            </button>
+        </div>
+        
+        <!-- Old mobile bottom palette (Removed/Hidden) -->
+        <div id="mobileBottomPalette" class="hidden"></div> 
+
+    </div>
+    
+    <!-- Modal for Messages (Save Confirmation) --><div id="messageModal" class="fixed inset-0 bg-gray-600 bg-opacity-50 hidden items-center justify-center z-50">
+        <div class="bg-white p-6 rounded-lg shadow-xl max-w-sm w-full text-center">
+            <p id="modalMessage" class="text-gray-700 mb-4"></p>
+            <button id="closeModalBtn" class="bg-blue-500 text-white py-2 px-4 rounded-lg hover:bg-blue-600">확인</button>
         </div>
     </div>
     
-    <script>
-        document.addEventListener('DOMContentLoaded', () => {
-            // --- 1. DOM 요소 가져오기 ---
-            const canvasContainer = document.getElementById('canvas-container');
-            const outlineCanvas = document.getElementById('outline-canvas'); // 도안 (아래)
-            const drawingCanvas = document.getElementById('drawing-canvas'); // 색칠 (위)
-            
-            const colorPalette = document.getElementById('color-palette');
-            const toolButtons = document.querySelectorAll('.tool-btn');
-            const brushSizeSlider = document.getElementById('brush-size');
-            const brushOpacitySlider = document.getElementById('brush-opacity');
-            
-            const imageLoader = document.getElementById('image-loader');
-            const saveButton = document.getElementById('save-btn');
-            const messageBox = document.getElementById('message-box');
-            const customCursor = document.getElementById('custom-cursor');
-            const zoomInfo = document.getElementById('zoom-info');
+    <!-- Hidden File Input for Loading --><input type="file" id="imageLoader" accept="image/*" class="hidden">
 
-            const outlineCtx = outlineCanvas.getContext('2d');
-            const drawingCtx = drawingCanvas.getContext('2d', { willReadFrequently: true });
 
-            // --- 2. 상태 변수 ---
-            let isDrawing = false;
-            let isPanning = false; // [수정] 모바일 패닝 상태
-            let isPinching = false; // [수정] 모바일 핀치 줌 상태
-            
-            let [lastX, lastY] = [0, 0];
-            
-            let currentColor = '#FF0000'; // 기본 빨간색
-            let brushSize = 10;
-            let brushOpacity = 0.5;
-            let currentTool = 'pencil';
-            let dpr = window.devicePixelRatio || 1; // 기기 픽셀 비율
+    <script type="module">
+        // ====================================================================
+        // Firebase Setup (Mandatory for Canvas Environment)
+        // ====================================================================
+        import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
+        import { getAuth, signInAnonymously, signInWithCustomToken } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
+        import { getFirestore, setLogLevel } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
 
-            // 확대/축소/이동(Pan) 관련 변수
-            let transform = {
-                scale: 1,
-                translateX: 0,
-                translateY: 0
+        // Global variables provided by the Canvas environment
+        const appId = typeof __app_id !== 'undefined' ? __app_id : 'default-app-id';
+        const firebaseConfig = typeof __firebase_config !== 'undefined' ? JSON.parse(__firebase_config) : {};
+        const initialAuthToken = typeof __initial_auth_token !== 'undefined' ? __initial_auth_token : null;
+
+        let app, db, auth;
+
+        async function initializeFirebase() {
+            try {
+                if (Object.keys(firebaseConfig).length > 0) {
+                    app = initializeApp(firebaseConfig);
+                    db = getFirestore(app);
+                    auth = getAuth(app);
+                    setLogLevel('debug'); // Enable Firestore logging
+
+                    if (initialAuthToken) {
+                        await signInWithCustomToken(auth, initialAuthToken);
+                        console.log("Firebase signed in with custom token.");
+                    } else {
+                        await signInAnonymously(auth);
+                        console.log("Firebase signed in anonymously.");
+                    }
+                } else {
+                    console.warn("Firebase configuration not found. Running application without Firebase services.");
+                }
+            } catch (error) {
+                console.error("Firebase initialization failed:", error);
+            }
+        }
+        
+        // ====================================================================
+        // Coloring Program Logic
+        // ====================================================================
+
+        // Canvas Elements
+        const lineCanvas = document.getElementById('lineCanvas'); // Layer 1 (Line Art)
+        const drawCanvas = document.getElementById('drawCanvas'); // Layer 2 (Coloring)
+        const ctx1 = lineCanvas.getContext('2d');
+        const ctx2 = drawCanvas.getContext('2d');
+        const canvasContainer = document.querySelector('.canvas-container');
+        const brushCursor = document.getElementById('brushCursor');
+
+        // State Variables
+        let isDrawing = false;
+        let lastX = 0;
+        let lastY = 0;
+        let strokePoints = [];
+        let currentBrush = 'Pencil'; // Default brush
+        let currentColor = '#000000';
+        let currentSize = 10;
+        let currentOpacity = 1.0;
+        let isTouchDevice = 'ontouchstart' in window || navigator.maxTouchPoints;
+
+        // Modal functions
+        const messageModal = document.getElementById('messageModal');
+        const modalMessage = document.getElementById('modalMessage');
+        const closeModalBtn = document.getElementById('closeModalBtn');
+        
+        function showMessage(message) {
+            if (messageModal) {
+                modalMessage.textContent = message;
+                messageModal.classList.remove('hidden');
+                modalMessage.classList.add('flex');
+            } else {
+                console.log(message);
+            }
+        }
+        
+        if (closeModalBtn) {
+            closeModalBtn.onclick = () => {
+                messageModal.classList.add('hidden');
+                messageModal.classList.remove('flex');
+            };
+        }
+
+
+        // Configuration
+        const PALETTE_COLORS = [
+            '#FF0000', '#FF4500', '#FFD700', '#ADFF2F', '#00FF00', '#00FFFF', 
+            '#0000FF', '#4B0082', '#9400D3', '#FF00FF', '#FF1493', '#FF69B4', 
+            '#8B4513', '#A0522D', '#D2B48C', '#808080', '#D3D3D3', '#000000',
+            '#FFFFFF', '#5F9EA0', '#7FFF00', '#DAA520', '#B0E0E6', '#F08080'
+        ];
+        
+        // ====================================================================
+        // UI Initialization & Synchronization
+        // ====================================================================
+
+        function setupUI() {
+            // --- Palette Generation ---
+            
+            const paletteDivPC = document.getElementById('colorPalettePC');
+            // Mobile palette now goes to the top section
+            const paletteDivMobileWrapper = document.getElementById('colorPaletteMobileWrapper'); 
+            
+            PALETTE_COLORS.forEach(color => {
+                const createButton = (isMobile) => {
+                    const btn = document.createElement('button');
+                    // 모바일: 12x2열을 위해 크기 축소 (w-4 = 16px)
+                    btn.className = isMobile 
+                        ? 'w-4 h-4 rounded-full border-2 border-gray-300 hover:scale-110 transition duration-100 ease-in-out'
+                        : 'w-6 h-6 md:w-8 md:h-8 rounded-full border-2 border-gray-300 hover:scale-110 transition duration-100 ease-in-out';
+                    btn.style.backgroundColor = color;
+                    btn.onclick = () => {
+                        setCurrentColor(color);
+                        document.getElementById('customColorPickerPC').value = color;
+                        document.getElementById('customColorPickerMobile').value = color;
+                    };
+                    return btn;
+                };
+                
+                paletteDivPC.appendChild(createButton(false));
+                paletteDivMobileWrapper.appendChild(createButton(true)); // Append to new top mobile wrapper
+            });
+
+            // --- Brush Buttons (Need to synchronize active state) ---
+            const brushButtonsPC = document.querySelectorAll('#pcToolPanel .tool-button');
+            const brushButtonsMobileContainer = document.getElementById('mobileBrushes');
+            
+            // Clone PC buttons for mobile display
+            brushButtonsPC.forEach(btnPC => {
+                const btnMobile = btnPC.cloneNode(true);
+                btnMobile.id = btnPC.id.replace('PC', 'Mobile');
+                btnMobile.classList.remove('active'); // Will be set by logic
+                
+                // Add mobile buttons to the container
+                brushButtonsMobileContainer.appendChild(btnMobile);
+                
+                const handler = (e) => {
+                    // Update active state across all buttons
+                    document.querySelectorAll('.tool-button').forEach(b => b.classList.remove('active'));
+                    
+                    const brushName = e.currentTarget.dataset.brush;
+                    document.getElementById(`brush-${brushName}PC`).classList.add('active');
+                    // Check if mobile button exists before adding active class
+                    const mobileBrushBtn = document.getElementById(`brush-${brushName}Mobile`);
+                    if (mobileBrushBtn) {
+                        mobileBrushBtn.classList.add('active');
+                    }
+                    
+                    currentBrush = brushName;
+                    updateBrushCursor();
+                };
+                
+                btnPC.onclick = handler;
+                btnMobile.onclick = handler;
+            });
+            // Set initial active state on mobile (Pencil)
+            document.getElementById('brush-PencilMobile').classList.add('active');
+
+
+            // --- Sliders Synchronization ---
+
+            const sizeSliderPC = document.getElementById('sizeSliderPC');
+            const opacitySliderPC = document.getElementById('opacitySliderPC');
+            const sizeValuePC = document.getElementById('currentSizeValuePC');
+            const opacityValuePC = document.getElementById('currentOpacityValuePC');
+
+            const sizeSliderMobile = document.getElementById('sizeSliderMobile');
+            const opacitySliderMobile = document.getElementById('opacitySliderMobile');
+            const sizeValueMobile = document.getElementById('currentSizeValueMobile');
+            const opacityValueMobile = document.getElementById('currentOpacityValueMobile');
+
+            const updateSize = (e) => {
+                currentSize = parseInt(e.target.value);
+                // Ensure all sliders and value displays are updated
+                if (sizeSliderPC) sizeSliderPC.value = currentSize;
+                if (sizeSliderMobile) sizeSliderMobile.value = currentSize;
+                if (sizeValuePC) sizeValuePC.textContent = currentSize;
+                if (sizeValueMobile) sizeValueMobile.textContent = currentSize;
+                updateBrushCursor();
             };
             
-            // 모바일 터치 상태 변수
-            let lastPinchDistance = 0;
-            let startPanPos = { x: 0, y: 0 };
+            const updateOpacity = (e) => {
+                currentOpacity = parseFloat(e.target.value);
+                const percentage = `${Math.round(currentOpacity * 100)}%`;
+                // Ensure all sliders and value displays are updated
+                if (opacitySliderPC) opacitySliderPC.value = currentOpacity;
+                if (opacitySliderMobile) opacitySliderMobile.value = currentOpacity;
+                if (opacityValuePC) opacityValuePC.textContent = percentage;
+                if (opacityValueMobile) opacityValueMobile.textContent = percentage;
+            };
+
+            // Attach event listeners
+            if (sizeSliderPC) sizeSliderPC.oninput = updateSize;
+            if (opacitySliderPC) opacitySliderPC.oninput = updateOpacity;
+            if (sizeSliderMobile) sizeSliderMobile.oninput = updateSize;
+            if (opacitySliderMobile) opacitySliderMobile.oninput = updateOpacity;
+
+
+            // --- Color Pickers Synchronization ---
             
-            // 24색 팔레트
-            const colors = [
-                '#FF0000', '#FF7F00', '#FFFF00', '#00FF00', '#0000FF', '#4B0082', '#9400D3', '#000000',
-                '#FFFFFF', '#FFC0CB', '#FFA500', '#00FFFF', '#008000', '#800080', '#A52A2A', '#808080',
-                '#D2691E', '#F5DEB3', '#FFD700', '#ADFF2F', '#7FFFD4', '#B0C4DE', '#E6E6FA', '#C0C0C0'
-            ];
-
-            // --- 3. 초기화 ---
+            const customPickerPC = document.getElementById('customColorPickerPC');
+            const customPickerMobile = document.getElementById('customColorPickerMobile');
             
-            // 팔레트 생성
-            colors.forEach(color => {
-                const colorBtn = document.createElement('button');
-                colorBtn.className = 'color-btn w-8 h-8 rounded-full m-1 flex-shrink-0';
-                colorBtn.style.backgroundColor = color;
-                if (color === '#FFFFFF') {
-                    colorBtn.style.border = '1px solid #ccc';
+            const updateColor = (e) => {
+                const color = e.target.value;
+                setCurrentColor(color);
+                // Sync the *other* picker
+                if (e.target.id === 'customColorPickerPC' && customPickerMobile) {
+                    customColorPickerMobile.value = color;
+                } else if (e.target.id === 'customColorPickerMobile' && customPickerPC) {
+                    customColorPickerPC.value = color;
                 }
-                if (color === currentColor) {
-                    colorBtn.classList.add('active');
-                }
-                colorBtn.addEventListener('click', () => {
-                    currentColor = color;
-                    document.querySelector('.color-btn.active')?.classList.remove('active');
-                    colorBtn.classList.add('active');
-                });
-                colorPalette.appendChild(colorBtn);
-            });
+            };
+            
+            if (customPickerPC) customPickerPC.onchange = updateColor;
+            if (customPickerMobile) customColorPickerMobile.onchange = updateColor;
 
-            // 툴 선택 (기본 'pencil')
-            document.querySelector('.tool-btn[data-tool="pencil"]').classList.add('active');
 
-            // 캔버스 크기 조절
-            function resizeCanvases() {
-                const { width, height } = canvasContainer.getBoundingClientRect();
-                dpr = window.devicePixelRatio || 1; 
-                
-                [outlineCanvas, drawingCanvas].forEach(canvas => {
-                    canvas.width = Math.round(width * dpr);
-                    canvas.height = Math.round(height * dpr);
-                    canvas.style.width = `${width}px`;
-                    canvas.style.height = `${height}px`;
-                });
+            // --- File Operations Buttons (PC) ---
+            const loadFileBtnPC = document.getElementById('loadFileBtnPC');
+            const clearDrawingBtnPC = document.getElementById('clearDrawingBtnPC');
+            const saveFileBtnPC = document.getElementById('saveFileBtnPC');
 
-                applyTransform(); // 캔버스 컨텍스트에 현재 변환(확대/축소) 적용
+            if (loadFileBtnPC) loadFileBtnPC.onclick = () => document.getElementById('imageLoader').click();
+            if (clearDrawingBtnPC) clearDrawingBtnPC.onclick = clearDrawingLayer;
+            if (saveFileBtnPC) saveFileBtnPC.onclick = saveDrawing;
 
-                // 도안이 있다면 다시 그리기
-                if (outlineCanvas.dataset.loaded) {
-                    const img = new Image();
-                    img.src = outlineCanvas.dataset.src;
-                    img.onload = () => drawImageOnCanvas(img);
-                }
+            // --- File Operations Buttons (Mobile) ---
+            const loadFileBtnMobile = document.getElementById('loadFileBtn'); 
+            const clearDrawingBtnMobile = document.getElementById('clearDrawingBtn'); 
+            const shareFileBtnMobile = document.getElementById('shareFileBtn'); 
+
+            if (loadFileBtnMobile) loadFileBtnMobile.onclick = () => document.getElementById('imageLoader').click();
+            if (clearDrawingBtnMobile) clearDrawingBtnMobile.onclick = clearDrawingLayer;
+            if (shareFileBtnMobile) shareFileBtnMobile.onclick = shareDrawing;
+
+
+            document.getElementById('imageLoader').onchange = loadFile;
+        }
+
+        function setCurrentColor(color) {
+            currentColor = color;
+            updateBrushCursor();
+        }
+
+        // ====================================================================
+        // Canvas Setup and Resizing
+        // ====================================================================
+
+        function resizeCanvas() {
+            const containerRect = canvasContainer.getBoundingClientRect();
+            
+            // Check if container has a non-zero size before attempting to get image data
+            let currentLineImageData = null;
+            let currentDrawImageData = null;
+
+            if (lineCanvas.width > 0 && lineCanvas.height > 0) {
+                 try {
+                     currentLineImageData = ctx1.getImageData(0, 0, lineCanvas.width, lineCanvas.height);
+                     currentDrawImageData = ctx2.getImageData(0, 0, drawCanvas.width, drawCanvas.height);
+                 } catch (e) {
+                     console.warn("Could not get image data for Layer. Initial canvas size might be zero.", e);
+                 }
+             }
+
+            // Set new canvas dimensions
+            lineCanvas.width = containerRect.width;
+            lineCanvas.height = containerRect.height;
+            drawCanvas.width = containerRect.width;
+            drawCanvas.height = containerRect.height;
+
+            // Set Image Smoothing for better quality during scaling
+            ctx1.imageSmoothingEnabled = true;
+            ctx2.imageSmoothingEnabled = true;
+            // High quality smoothing
+            ctx1.imageSmoothingQuality = 'high';
+            ctx2.imageSmoothingQuality = 'high';
+
+
+            // Redraw content from stored data
+            // Fill Layer 1 with white background initially
+            ctx1.fillStyle = 'white';
+            ctx1.fillRect(0, 0, lineCanvas.width, lineCanvas.height);
+            
+            // Only attempt to redraw if data was successfully captured
+            if (currentLineImageData && currentLineImageData.data.length > 0) {
+                 ctx1.putImageData(currentLineImageData, 0, 0);
+            }
+            if (currentDrawImageData && currentDrawImageData.data.length > 0) {
+                 ctx2.putImageData(currentDrawImageData, 0, 0);
             }
             
-            // 그리기 컨텍스트에 현재 확대/축소/이동 상태 적용
-            function applyTransform() {
-                [outlineCtx, drawingCtx].forEach(ctx => {
-                    ctx.setTransform(1, 0, 0, 1, 0, 0); // 초기화
-                    ctx.scale(dpr, dpr); // HiDPI 대응
+            // Initialize Layer 2 context properties
+            ctx2.lineCap = 'round';
+            ctx2.lineJoin = 'round';
+
+            // Resize 후 커서 위치 업데이트
+            updateBrushCursor();
+        }
+
+        // ====================================================================
+        // Drawing Core Logic 
+        // ====================================================================
+        
+        function getCoords(e) {
+            const rect = drawCanvas.getBoundingClientRect();
+            
+            // Touch 이벤트 시 pageX/Y, Mouse 이벤트 시 clientX/Y 사용 (브라우저 일관성 위해)
+            const eventX = (e.touches ? e.touches[0].pageX : e.clientX);
+            const eventY = (e.touches ? e.touches[0].pageY : e.clientY);
+
+            // 캔버스 컨테이너의 페이지 상 절대 위치를 계산 (스크롤 위치 포함)
+            const containerRect = canvasContainer.getBoundingClientRect();
+            const canvasXOnPage = containerRect.left + window.scrollX;
+            const canvasYOnPage = containerRect.top + window.scrollY;
+
+            // 이벤트 좌표를 캔버스 내부의 상대 좌표로 변환
+            const x = eventX - canvasXOnPage;
+            const y = eventY - canvasYOnPage;
+            
+            return {
+                // 캔버스 내부 픽셀 좌표를 CSS 픽셀 좌표로 스케일링하여 반환
+                x: x, 
+                y: y,
+                pressure: e.pressure !== undefined ? e.pressure : 0.5
+            };
+        }
+        
+        // **최종 커서 업데이트 로직**
+        function updateBrushCursor(e) {
+            // 1. 모바일 (터치 디바이스)는 커서를 표시하지 않음 (요청 사항)
+            if (isTouchDevice) {
+                brushCursor.style.display = 'none';
+                return;
+            }
+
+            // 2. PC 환경 로직
+            const rect = drawCanvas.getBoundingClientRect();
+            let screenX, screenY;
+
+            if (e) {
+                // 이벤트가 있을 경우: 마우스 절대 좌표 (뷰포트 기준 clientX/Y)를 사용
+                screenX = e.clientX;
+                screenY = e.clientY;
+            } else {
+                // 이벤트가 없을 경우 (초기화/리사이즈): 캔버스 중앙을 기본 위치로 설정
+                screenX = rect.left + rect.width / 2; 
+                screenY = rect.top + rect.height / 2;
+            }
+
+            let displaySize = currentBrush === 'Eraser' ? currentSize * 2 : currentSize;
+            const cursorSize = displaySize * 2;
+            
+            // 3. 커서 스타일 및 크기 업데이트
+            brushCursor.style.width = `${cursorSize}px`;
+            brushCursor.style.height = `${cursorSize}px`;
+
+            // 4. 커서 위치 설정 (화면 절대 좌표)
+            brushCursor.style.left = `${screenX}px`;
+            brushCursor.style.top = `${screenY}px`;
+            
+            // 5. 색상 및 외관 설정
+            if (currentBrush === 'Eraser') {
+                brushCursor.style.backgroundColor = 'rgba(255, 255, 255, 0.8)';
+                brushCursor.style.borderColor = 'rgba(0, 0, 0, 0.8)';
+            } else {
+                brushCursor.style.backgroundColor = currentColor.slice(0, 7) + '33';
+                brushCursor.style.borderColor = currentColor;
+            }
+
+            // 6. 가시성 설정 (PC에서만)
+            if (drawCanvas.matches(':hover') || isDrawing) {
+                 brushCursor.style.display = 'block';
+            } else {
+                 brushCursor.style.display = 'none';
+            }
+        }
+
+        function startDrawing(e) {
+            e.preventDefault();
+            isDrawing = true;
+            const coords = getCoords(e);
+            lastX = coords.x;
+            lastY = coords.y;
+            strokePoints = [{ x: lastX, y: lastY, t: Date.now() }];
+            draw(lastX, lastY);
+        }
+
+        function drawing(e) {
+            e.preventDefault();
+            if (!isDrawing) return;
+            const coords = getCoords(e);
+            const x = coords.x;
+            const y = coords.y;
+            // PC에서만 커서 업데이트
+            if (!isTouchDevice) {
+               updateBrushCursor(e); 
+            }
+            strokePoints.push({ x: x, y: y, t: Date.now() });
+            draw(x, y);
+            lastX = x;
+            lastY = y;
+        }
+
+        function stopDrawing(e) {
+            if (!isDrawing) return;
+            isDrawing = false;
+            strokePoints = [];
+            
+            // PC에서 마우스 커서가 캔버스 영역을 벗어났을 경우에만 숨김
+            if (!isTouchDevice && !drawCanvas.matches(':hover')) {
+                brushCursor.style.display = 'none';
+            }
+            ctx2.globalCompositeOperation = 'source-over';
+        }
+
+        function draw(x, y) {
+            ctx2.globalAlpha = currentOpacity;
+            ctx2.strokeStyle = currentColor;
+            ctx2.lineWidth = currentSize;
+            ctx2.globalCompositeOperation = 'source-over';
+            ctx2.shadowBlur = 0; 
+            ctx2.shadowColor = 'rgba(0, 0, 0, 0)';
+
+            switch (currentBrush) {
+                case 'Pencil':
+                    drawPencil(x, y);
+                    break;
+                case 'Crayon':
+                    drawCrayon(x, y);
+                    break;
+                case 'Watercolor':
+                    drawWatercolor(x, y);
+                    break;
+                case 'Marker':
+                    drawMarker(x, y);
+                    break;
+                case 'Eraser':
+                    drawEraser(x, y);
+                    break;
+            }
+        }
+        
+        function getSimulatedPressureAlpha() {
+            const maxDuration = 1000;
+            if (strokePoints.length === 0) return currentOpacity;
+            const startTime = strokePoints[0].t;
+            const currentTime = Date.now();
+            const duration = currentTime - startTime;
+            let fadeFactor = Math.max(0.1, 1 - (duration / maxDuration)); 
+            return currentOpacity * fadeFactor;
+        }
+
+        function drawPencil(x, y) {
+            ctx2.lineWidth = currentSize * 0.7;
+            ctx2.globalAlpha = getSimulatedPressureAlpha() * 0.7;
+            const count = 3;
+            for (let i = 0; i < count; i++) {
+                const offsetX = (Math.random() - 0.5) * currentSize * 0.3;
+                const offsetY = (Math.random() - 0.5) * currentSize * 0.3;
+                ctx2.beginPath();
+                ctx2.moveTo(lastX + offsetX, lastY + offsetY);
+                ctx2.lineTo(x + offsetX, y + offsetY);
+                ctx2.stroke();
+            }
+        }
+
+        function drawCrayon(x, y) {
+            const baseSize = currentSize * 1.5; 
+            ctx2.globalAlpha = getSimulatedPressureAlpha() * 0.9;
+            const count = 7;
+            for (let i = 0; i < count; i++) {
+                const randomSize = baseSize + (Math.random() - 0.5) * currentSize * 0.5;
+                ctx2.lineWidth = randomSize;
+                const offsetAmount = currentSize * 0.8;
+                const startX = lastX + (Math.random() - 0.5) * offsetAmount;
+                const startY = lastY + (Math.random() - 0.5) * offsetAmount;
+                const endX = x + (Math.random() - 0.5) * offsetAmount;
+                const endY = y + (Math.random() - 0.5) * offsetAmount;
+                ctx2.beginPath();
+                ctx2.moveTo(startX, startY);
+                ctx2.lineTo(endX, endY);
+                ctx2.stroke();
+            }
+        }
+
+        function drawWatercolor(x, y) {
+            ctx2.lineWidth = currentSize * 3;
+            ctx2.globalAlpha = currentOpacity * 0.05;
+            ctx2.shadowColor = currentColor;
+            ctx2.shadowBlur = currentSize * 1.5;
+            ctx2.beginPath();
+            ctx2.moveTo(lastX, lastY);
+            ctx2.lineTo(x, y);
+            ctx2.stroke();
+        }
+        
+        function drawMarker(x, y) {
+            ctx2.lineWidth = currentSize; 
+            ctx2.globalAlpha = currentOpacity * 0.4;
+            ctx2.beginPath();
+            ctx2.moveTo(lastX, lastY);
+            ctx2.lineTo(x, y);
+            ctx2.stroke();
+        }
+
+        function drawEraser(x, y) {
+            ctx2.lineWidth = currentSize * 2;
+            ctx2.globalAlpha = 1.0;
+            ctx2.globalCompositeOperation = 'destination-out';
+            ctx2.beginPath();
+            ctx2.moveTo(lastX, lastY);
+            ctx2.lineTo(x, y);
+            ctx2.stroke();
+            ctx2.globalCompositeOperation = 'source-over';
+        }
+
+
+        // ====================================================================
+        // File and Layer Operations
+        // ====================================================================
+        
+        // Helper to merge the canvases
+        function mergeCanvases() {
+            const tempCanvas = document.createElement('canvas');
+            tempCanvas.width = lineCanvas.width;
+            tempCanvas.height = lineCanvas.height;
+            const tempCtx = tempCanvas.getContext('2d');
+            tempCtx.imageSmoothingEnabled = true;
+            tempCtx.imageSmoothingQuality = 'high';
+
+            // Draw Layer 1 (Line Art)
+            tempCtx.drawImage(lineCanvas, 0, 0);
+
+            // Draw Layer 2 (Coloring) - No multiply needed here, as the drawing is already rendered on Layer 2
+            tempCtx.globalCompositeOperation = 'source-over'; 
+            tempCtx.drawImage(drawCanvas, 0, 0);
+            
+            return tempCanvas;
+        }
+
+
+        function loadFile(e) {
+            const file = e.target.files[0];
+            if (!file) return;
+
+            const reader = new FileReader();
+            reader.onload = (event) => {
+                const img = new Image();
+                img.onload = () => {
+                    ctx1.clearRect(0, 0, lineCanvas.width, lineCanvas.height);
                     
-                    // 확대/축소 및 이동 적용
-                    ctx.translate(transform.translateX, transform.translateY);
-                    ctx.scale(transform.scale, transform.scale);
-                });
-                drawingCtx.lineJoin = 'round';
-                drawingCtx.lineCap = 'round';
-            }
-            
-            function updateZoomInfo() {
-                zoomInfo.textContent = `${Math.round(transform.scale * 100)}%`;
-            }
+                    const cw = lineCanvas.width;
+                    const ch = lineCanvas.height;
+                    const ar = img.width / img.height;
+                    
+                    let drawW, drawH, drawX, drawY;
 
-            window.addEventListener('resize', resizeCanvases);
-            resizeCanvases();
-            updateZoomInfo();
-
-            // --- 4. 좌표 변환 헬퍼 ---
-            
-            // 화면(View) 좌표(clientX, clientY)를 캔버스(World) 좌표로 변환
-            function getCanvasPoint(clientX, clientY) {
-                const rect = drawingCanvas.getBoundingClientRect();
-                const x = (clientX - rect.left - transform.translateX * dpr) / (transform.scale * dpr);
-                const y = (clientY - rect.top - transform.translateY * dpr) / (transform.scale * dpr);
-                return { x, y };
-            }
-
-            // --- 5. 그리기 이벤트 (PC + 모바일 통합) ---
-
-            function startDrawing(e) {
-                e.preventDefault(); // 기본 동작(스크롤, 줌 등) 방지
-                
-                // [수정] 모바일 터치 이벤트 분기
-                if (e.touches) {
-                    if (e.touches.length === 1 && !isPinching) {
-                        // 한 손가락: 그리기 시작
-                        isDrawing = true;
-                        isPanning = false;
-                        const { x, y } = getCanvasPoint(e.touches[0].clientX, e.touches[0].clientY);
-                        [lastX, lastY] = [x, y];
-                        // [수정] 첫 터치 시 '점'이 찍히는 것을 방지
-                        // draw(e) 대신 lastX/Y만 설정
-                    } 
-                    else if (e.touches.length === 2) {
-                        // 두 손가락: 핀치 줌/패닝 시작
-                        isDrawing = false;
-                        isPinching = true;
-                        isPanning = true;
-                        lastPinchDistance = getPinchDistance(e);
-                        startPanPos = getMidPoint(e);
+                    // Calculate dimensions to fit image maintaining aspect ratio
+                    if (cw / ch > ar) { // Canvas is wider than image aspect ratio
+                        drawH = ch;
+                        drawW = ch * ar;
+                    } else { // Canvas is taller or same aspect ratio as image
+                        drawW = cw;
+                        drawH = cw / ar;
                     }
-                } else {
-                    // PC 마우스: 그리기 시작
-                    isDrawing = true;
-                    isPanning = false;
-                    const { x, y } = getCanvasPoint(e.clientX, e.clientY);
-                    [lastX, lastY] = [x, y];
-                    // [수정] 첫 클릭 시 '점'이 찍히는 것을 방지
-                }
-                
-                if (e.touches) {
-                    updateCustomCursor(e, true);
-                }
-            }
+                    drawX = (cw - drawW) / 2;
+                    drawY = (ch - drawH) / 2;
+                    
+                    // Set image smoothing for quality during the draw
+                    ctx1.imageSmoothingEnabled = true;
+                    ctx1.imageSmoothingQuality = 'high';
 
-            function draw(e) {
-                e.preventDefault();
-                updateCustomCursor(e, e.touches ? true : false);
-
-                // [수정] 모바일 핀치 줌 / 패닝 로직
-                if (e.touches && e.touches.length === 2 && isPinching) {
-                    isDrawing = false;
+                    ctx1.drawImage(img, drawX, drawY, drawW, drawH);
+                    console.log("이미지 불러오기 완료. Layer 1에 도안이 로드되었습니다.");
                     
-                    // 1. 핀치 줌 (확대/축소)
-                    const newPinchDistance = getPinchDistance(e);
-                    const scaleFactor = newPinchDistance / lastPinchDistance;
-                    lastPinchDistance = newPinchDistance;
-                    
-                    const midPoint = getMidPoint(e); // 화면(View) 기준 중심점
-                    
-                    // 캔버스(World) 기준 중심점
-                    const worldMidPoint = getCanvasPoint(midPoint.x, midPoint.y);
-
-                    // 새로운 스케일 적용 (최소 0.2배, 최대 10배)
-                    const newScale = Math.min(Math.max(transform.scale * scaleFactor, 0.2), 10);
-                    transform.scale = newScale;
-                    
-                    // 2. 패닝 (이동)
-                    const panDeltaX = (midPoint.x - startPanPos.x) / (transform.scale * dpr);
-                    const panDeltaY = (midPoint.y - startPanPos.y) / (transform.scale * dpr);
-                    transform.translateX += panDeltaX;
-                    transform.translateY += panDeltaY;
-                    startPanPos = midPoint;
-                    
-                    applyTransform(); // 캔버스에 변환 적용
-                    updateZoomInfo(); // 확대/축소 비율 UI 업데이트
-                    return; // 줌/패닝 중에는 그리기 방지
-                
-                } 
-                else if (e.touches && e.touches.length === 1 && isPanning) {
-                    // [버그 수정] 핀치 후 한 손가락 떼도 패닝/그리기 안되도록 방지
-                    // (isPanning은 핀치 시작 시에만 true가 됨)
-                    return;
-                }
-
-                // [수정] 그리기 로직
-                if (!isDrawing) return;
-                
-                let clientX, clientY;
-                if (e.touches) {
-                    if (e.touches.length === 0) return;
-                    clientX = e.touches[0].clientX;
-                    clientY = e.touches[0].clientY;
-                } else {
-                    clientX = e.clientX;
-                    clientY = e.clientY;
-                }
-                
-                const { x, y } = getCanvasPoint(clientX, clientY);
-                
-                let currentOpacity = brushOpacity;
-                let currentSize = brushSize / transform.scale; // [중요] 확대/축소에 따라 브러시 크기 보정
-                
-                drawingCtx.globalCompositeOperation = (currentTool === 'eraser') ? 'destination-out' : 'source-over';
-                
-                if (currentTool === 'eraser') {
-                    currentOpacity = 1.0;
-                    drawingCtx.lineWidth = currentSize;
-                    drawingCtx.strokeStyle = 'rgba(0,0,0,1)';
-                    drawingCtx.lineCap = 'round';
-                    
-                    drawingCtx.beginPath();
-                    drawingCtx.moveTo(lastX, lastY);
-                    drawingCtx.lineTo(x, y);
-                    drawingCtx.stroke();
-                } 
-                else if (currentTool === 'pencil') {
-                    // [수정] 거친 질감
-                    drawingCtx.lineWidth = currentSize * 0.5; // 색연필은 가늘게
-                    drawingCtx.lineCap = 'round';
-                    drawingCtx.strokeStyle = hexToRgba(currentColor, currentOpacity * 0.7);
-                    
-                    // 1. 기본 선 (끊김 방지)
-                    drawingCtx.beginPath();
-                    drawingCtx.moveTo(lastX, lastY);
-                    drawingCtx.lineTo(x, y);
-                    drawingCtx.stroke();
-                    
-                    // 2. 거친 질감 (스패터)
-                    drawingCtx.lineCap = 'butt';
-                    const density = Math.max(1, Math.floor(currentSize * 0.5));
-                    for (let i = 0; i < density; i++) {
-                        const dx = (Math.random() - 0.5) * currentSize * 0.5;
-                        const dy = (Math.random() - 0.5) * currentSize * 0.5;
-                        const dSize = Math.random() * (currentSize * 0.1);
-                        drawingCtx.beginPath();
-                        drawingCtx.rect(x + dx, y + dy, dSize, dSize);
-                        drawingCtx.fillStyle = hexToRgba(currentColor, Math.random() * currentOpacity * 0.5);
-                        drawingCtx.fill();
+                    // 이미지 로드 후 커서 위치 강제 동기화 (PC에서만 필요)
+                    if (!isTouchDevice) {
+                         setTimeout(() => {
+                            const rect = drawCanvas.getBoundingClientRect();
+                            updateBrushCursor({
+                                clientX: rect.left + rect.width / 2,
+                                clientY: rect.top + rect.height / 2
+                            });
+                        }, 50); // 50ms 후 위치 업데이트
                     }
-                } 
-                else if (currentTool === 'marker') {
-                    // 균일하고 선명한 선
-                    drawingCtx.lineWidth = currentSize;
-                    drawingCtx.lineCap = 'round';
-                    drawingCtx.strokeStyle = hexToRgba(currentColor, currentOpacity);
-
-                    drawingCtx.beginPath();
-                    drawingCtx.moveTo(lastX, lastY);
-                    drawingCtx.lineTo(x, y);
-                    drawingCtx.stroke();
-                } 
-                else if (currentTool === 'watercolor') {
-                    // [수정] 가우시안 블러 (방사형 그라디언트) 스탬프 방식
-                    drawingCtx.lineCap = 'round'; // 선 연결은 둥글게
                     
-                    const distance = Math.hypot(x - lastX, y - lastY);
-                    const step = Math.max(1, currentSize / 4); // 브러시 크기에 비례하여 스탬프 간격 조절
-                    
-                    for (let i = 0; i < distance; i += step) {
-                        const t = i / distance;
-                        const px = lastX + (x - lastX) * t;
-                        const py = lastY + (y - lastY) * t;
-                        
-                        // [핵심] 방사형 그라디언트 생성
-                        const gradient = drawingCtx.createRadialGradient(px, py, currentSize * 0.1, px, py, currentSize * 0.5);
-                        gradient.addColorStop(0, hexToRgba(currentColor, currentOpacity)); // 중심
-                        gradient.addColorStop(1, hexToRgba(currentColor, 0)); // 가장자리 (완전 투명)
-
-                        drawingCtx.fillStyle = gradient;
-                        drawingCtx.beginPath();
-                        drawingCtx.arc(px, py, currentSize * 0.5, 0, Math.PI * 2);
-                        drawingCtx.fill();
-                    }
-                }
-                
-                [lastX, lastY] = [x, y];
-            }
-
-            function stopDrawing(e) {
-                if (isDrawing) {
-                    drawingCtx.beginPath(); // 현재 경로 리셋
-                }
-                
-                isDrawing = false; 
-                isPinching = false;
-                isPanning = false;
-                
-                if (e.touches || e.type === 'touchend' || e.type === 'touchcancel') {
-                    customCursor.style.display = 'none';
-                }
-            }
-            
-            // --- 6. 모바일 터치 헬퍼 함수 ---
-            function getPinchDistance(e) {
-                const t1 = e.touches[0];
-                const t2 = e.touches[1];
-                return Math.hypot(t1.clientX - t2.clientX, t1.clientY - t2.clientY);
-            }
-            
-            function getMidPoint(e) {
-                const t1 = e.touches[0];
-                const t2 = e.touches[1];
-                return { 
-                    x: (t1.clientX + t2.clientX) / 2, 
-                    y: (t1.clientY + t2.clientY) / 2 
+                    document.getElementById('loadFileBtn').blur(); 
                 };
+                img.src = event.target.result;
+            };
+            reader.readAsDataURL(file);
+        }
+
+        function clearDrawingLayer() {
+            ctx2.clearRect(0, 0, drawCanvas.width, drawCanvas.height);
+            console.log("그린 그림(Layer 2)을 지웠습니다. 도안은 그대로 유지됩니다.");
+        }
+
+        function saveDrawing() {
+            const tempCanvas = mergeCanvases();
+            
+            const image = tempCanvas.toDataURL("image/png");
+            const link = document.createElement('a');
+            link.download = 'coloring_image.png';
+            link.href = image;
+            
+            document.body.appendChild(link);
+            link.click();
+            document.body.removeChild(link);
+            
+            showMessage("그림이 PNG 파일로 저장되었습니다.");
+        }
+        
+        async function shareDrawing() {
+            if (!navigator.share) {
+                showMessage("죄송합니다. 이 브라우저에서는 공유 기능을 지원하지 않습니다.");
+                return;
             }
 
-            // --- 7. 맞춤형 커서 (PC) ---
-            function updateCustomCursor(e, forceShow = false) {
-                // 모바일에서는 커서 숨김
-                if (e.touches) {
-                    customCursor.style.display = 'none';
-                    return;
-                }
+            try {
+                const tempCanvas = mergeCanvases();
                 
-                let clientX, clientY;
-                if (e.touches) {
-                    if (e.touches.length === 0) return; 
-                    clientX = e.touches[0].clientX;
-                    clientY = e.touches[0].clientY;
+                tempCanvas.toBlob(async (blob) => {
+                    const file = new File([blob], "my_coloring.png", { type: "image/png" });
+                    
+                    await navigator.share({
+                        files: [file],
+                        title: '나만의 컬러링 작품',
+                        text: '제가 직접 색칠한 작품이에요!',
+                    });
+                    
+                    console.log('Sharing successful');
+                    
+                }, 'image/png');
+
+            } catch (error) {
+                if (error.name !== 'AbortError') {
+                    console.error("공유 중 오류 발생:", error);
+                    showMessage("공유 중 오류가 발생했습니다. 잠시 후 다시 시도해주세요.");
                 } else {
-                    clientX = e.clientX;
-                    clientY = e.clientY;
-                }
-
-                // [중요] 확대/축소와 상관없이 커서 크기는 항상 일정 (화면 기준)
-                const size = brushSize; 
-                customCursor.style.width = `${size}px`;
-                customCursor.style.height = `${size}px`;
-                
-                customCursor.style.left = `${clientX - size / 2}px`;
-                customCursor.style.top = `${clientY - size / 2}px`;
-                
-                if (forceShow) {
-                    customCursor.style.display = 'block';
+                    console.log("Sharing cancelled.");
                 }
             }
-            
-            // PC 마우스가 캔버스에 들어오고 나갈 때 커서 표시/숨김
-            canvasContainer.addEventListener('mouseenter', (e) => {
-                if (e.pointerType === 'mouse') { // 마우스일 때만
-                    customCursor.style.display = 'block';
-                    updateCustomCursor(e);
-                }
-            });
-            canvasContainer.addEventListener('mouseleave', (e) => {
-                if (e.pointerType === 'mouse') {
-                    customCursor.style.display = 'none';
-                }
-            });
-            
-            // --- 8. 툴/설정 변경 이벤트 ---
-            
-            toolButtons.forEach(btn => {
-                btn.addEventListener('click', () => {
-                    document.querySelector('.tool-btn.active')?.classList.remove('active');
-                    btn.classList.add('active');
-                    currentTool = btn.dataset.tool;
-                    updateBrushOpacityLabel();
-                });
-            });
+        }
 
-            brushSizeSlider.addEventListener('input', (e) => {
-                brushSize = e.target.value;
-                if (customCursor.style.display === 'block') {
-                    const size = brushSize;
-                    customCursor.style.width = `${size}px`;
-                    customCursor.style.height = `${size}px`;
-                }
-            });
+        // ====================================================================
+        // Event Listeners and Initialization
+        // ====================================================================
 
-            brushOpacitySlider.addEventListener('input', (e) => {
-                brushOpacity = e.target.value;
-            });
+        window.onload = function() {
+            // 1. Initialize Firebase
+            initializeFirebase();
             
-            function updateBrushOpacityLabel() {
-                const label = document.querySelector('label[for="brush-opacity"]');
-                if (currentTool === 'eraser') {
-                    label.textContent = '지우개 (농도 100%)';
-                    brushOpacitySlider.disabled = true; 
-                    brushOpacitySlider.value = 1.0;
-                } else {
-                    label.textContent = '브러시 농도';
-                    brushOpacitySlider.disabled = false;
-                    brushOpacitySlider.value = brushOpacity; // 원래 농도로 복원
-                }
+            // 2. Setup UI
+            setupUI();
+
+            // 3. Setup Canvas dimensions
+            resizeCanvas();
+            window.addEventListener('resize', resizeCanvas);
+
+            // 4. Set up Mouse/Touch Events on Layer 2 (drawCanvas)
+            drawCanvas.addEventListener('mousedown', startDrawing);
+            drawCanvas.addEventListener('mousemove', drawing);
+            document.addEventListener('mouseup', stopDrawing);
+            
+            drawCanvas.addEventListener('touchstart', startDrawing, { passive: false });
+            drawCanvas.addEventListener('touchmove', drawing, { passive: false });
+            document.addEventListener('touchend', stopDrawing);
+            
+            // 5. Custom Cursor Visibility (PC Only)
+            if (!isTouchDevice) {
+                // 마우스 이동 시 브러시 커서 위치 업데이트
+                drawCanvas.addEventListener('mousemove', (e) => updateBrushCursor(e)); 
+                // 캔버스 진입/이탈 시 커서 표시/숨김
+                drawCanvas.addEventListener('mouseenter', () => brushCursor.style.display = 'block');
+                drawCanvas.addEventListener('mouseleave', () => brushCursor.style.display = 'none');
+            } else {
+                 // 모바일은 브러시 커서를 사용하지 않음
+                 brushCursor.style.display = 'none';
             }
             
-            // --- 9. 파일 이벤트 ---
-            
-            imageLoader.addEventListener('change', (e) => {
-                const file = e.target.files[0];
-                if (!file) return;
+            // 6. 캔버스 위치가 변경될 때마다 커서 위치를 보정하기 위해 resize 이벤트에 updateBrushCursor 추가
+            window.addEventListener('resize', updateBrushCursor);
 
-                const reader = new FileReader();
-                reader.onload = (event) => {
-                    const img = new Image();
-                    img.onload = () => {
-                        // 확대/축소/이동 초기화
-                        transform.scale = 1;
-                        transform.translateX = 0;
-                        transform.translateY = 0;
-                        
-                        resizeCanvases(); // 캔버스 크기 재조정
-                        
-                        outlineCtx.clearRect(0, 0, outlineCanvas.width, outlineCanvas.height);
-                        drawingCtx.clearRect(0, 0, drawingCanvas.width, drawingCanvas.height);
-                        
-                        drawImageOnCanvas(img);
-                        
-                        outlineCanvas.dataset.loaded = "true";
-                        outlineCanvas.dataset.src = img.src;
-                        
-                        applyTransform(); // 변환 적용 (초기화된 상태)
-                        updateZoomInfo(); // 줌 정보 업데이트
-                    };
-                    img.src = event.target.result;
-                };
-                reader.readAsDataURL(file);
-                
-                e.target.value = null; // 같은 파일 다시 로드 가능하게
-            });
+            // 7. Initial cursor setup
+            updateBrushCursor();
+        };
 
-            function drawImageOnCanvas(img) {
-                // 원본 캔버스 크기 (CSS 픽셀 기준)
-                const cw = outlineCanvas.width / dpr;
-                const ch = outlineCanvas.height / dpr;
-                
-                const imgRatio = img.width / img.height;
-                const canvasRatio = cw / ch;
-
-                let drawWidth, drawHeight, offsetX, offsetY;
-
-                if (imgRatio > canvasRatio) { // 이미지가 캔버스보다 가로로 넓음
-                    drawWidth = cw;
-                    drawHeight = cw / imgRatio;
-                    offsetX = 0;
-                    offsetY = (ch - drawHeight) / 2; // 세로 중앙 정렬
-                } else { // 이미지가 캔버스보다 세로로 길거나 같음
-                    drawHeight = ch;
-                    drawWidth = ch * imgRatio;
-                    offsetX = (cw - drawWidth) / 2; // 가로 중앙 정렬
-                    offsetY = 0;
-                }
-                
-                // 확대/축소와 상관없이 원본 도안은 항상 1:1로 그림
-                outlineCtx.save();
-                outlineCtx.setTransform(1, 0, 0, 1, 0, 0); // 변환 완전 초기화
-                outlineCtx.scale(dpr, dpr); // HiDPI만 적용
-                outlineCtx.clearRect(0, 0, cw, ch);
-                outlineCtx.drawImage(img, offsetX, offsetY, drawWidth, drawHeight);
-                outlineCtx.restore(); // 저장한 컨텍스트 복원 (applyTransform 상태로)
-            }
-
-            saveButton.addEventListener('click', () => {
-                // 1. 임시 캔버스 생성 (최종 결과물용)
-                const tempCanvas = document.createElement('canvas');
-                // HiDPI가 아닌 1:1 크기로 생성
-                const { width, height } = canvasContainer.getBoundingClientRect();
-                tempCanvas.width = width;
-                tempCanvas.height = height;
-                const tempCtx = tempCanvas.getContext('2d');
-                
-                tempCtx.fillStyle = 'white';
-                tempCtx.fillRect(0, 0, width, height);
-                
-                // 2. 도안 캔버스 그리기 (DPR 고려하여 축소)
-                tempCtx.drawImage(outlineCanvas, 0, 0, outlineCanvas.width, outlineCanvas.height, 0, 0, width, height);
-                
-                // 3. 색칠 캔버스 그리기 (DPR 고려하여 축소)
-                tempCtx.globalCompositeOperation = 'multiply'; // mix-blend-mode와 동일 효과
-                tempCtx.drawImage(drawingCanvas, 0, 0, drawingCanvas.width, drawingCanvas.height, 0, 0, width, height);
-
-                // 4. 다운로드 링크 생성
-                const link = document.createElement('a');
-                link.download = 'my-coloring.png';
-                link.href = tempCanvas.toDataURL('image/png');
-                link.click();
-                
-                showToast("이미지가 저장되었습니다!");
-            });
-
-            // --- 10. 유틸리티 함수 ---
-
-            function hexToRgba(hex, alpha) {
-                let r = 0, g = 0, b = 0;
-                if (hex.length === 4) { // #RGB
-                    r = parseInt(hex[1] + hex[1], 16);
-                    g = parseInt(hex[2] + hex[2], 16);
-                    b = parseInt(hex[3] + hex[3], 16);
-                } else if (hex.length === 7) { // #RRGGBB
-                    r = parseInt(hex.substring(1, 3), 16);
-                    g = parseInt(hex.substring(3, 5), 16);
-                    b = parseInt(hex.substring(5, 7), 16);
-                }
-                if (hex === '#FFFFFF') { // 흰색은 multiply 모드에서 투명하게 처리
-                    alpha = 0;
-                }
-                return `rgba(${r}, ${g}, ${b}, ${alpha})`;
-            }
-
-            function showToast(message) {
-                messageBox.textContent = message;
-                messageBox.classList.remove('opacity-0', '-translate-y-10');
-                messageBox.classList.add('opacity-100', 'translate-y-0');
-                
-                setTimeout(() => {
-                    messageBox.classList.add('opacity-0', '-translate-y-10');
-                    messageBox.classList.remove('opacity-100', 'translate-y-0');
-                }, 2000);
-            }
-
-            // --- 11. 이벤트 리스너 연결 ---
-            
-            // PC 마우스 이벤트
-            canvasContainer.addEventListener('mousedown', startDrawing);
-            canvasContainer.addEventListener('mousemove', draw);
-            canvasContainer.addEventListener('mouseup', stopDrawing);
-            canvasContainer.addEventListener('mouseleave', stopDrawing);
-            
-            // 모바일 터치 이벤트
-            canvasContainer.addEventListener('touchstart', startDrawing, { passive: false });
-            canvasContainer.addEventListener('touchmove', draw, { passive: false });
-            canvasContainer.addEventListener('touchend', stopDrawing);
-            canvasContainer.addEventListener('touchcancel', stopDrawing);
-            
-        });
     </script>
 </body>
 </html>
