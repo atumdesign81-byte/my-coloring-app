@@ -75,11 +75,20 @@
             padding: 0.5rem;
         }
 
-        /* 팝업 모달 중앙 정렬을 위한 스타일 */
+        /* 팝업 모달 스타일: 전체 화면 덮고 중앙 정렬 */
         #messageModal {
             display: none; /* JS에서 'flex'로 토글됨 */
+            align-items: center;
+            justify-content: center;
         }
 
+        /* 모달 내용 컨테이너: 캔버스 상단에 가깝게 위치하도록 조정 */
+        /* 모바일에서만 적용되는 위치 조정 (PC는 flex: center로 충분) */
+        @media (max-width: 767px) {
+            #messageModal .modal-content {
+                margin-top: -30vh; /* 화면 상단에서 30% 지점에 위치하도록 조정 */
+            }
+        }
     </style>
 </head>
 <body class="p-4 md:p-8 min-h-screen">
@@ -200,9 +209,9 @@
     </div>
     
     <!-- Modal for Messages (Save Confirmation) -->
-    <!-- 'hidden'을 JS에서 'flex'로 토글하여 중앙 정렬을 강제함 -->
+    <!-- CSS 중앙 정렬 유지 -->
     <div id="messageModal" class="fixed inset-0 bg-gray-600 bg-opacity-50 hidden items-center justify-center z-50">
-        <div class="bg-white p-6 rounded-lg shadow-xl max-w-sm w-full text-center">
+        <div class="bg-white p-6 rounded-lg shadow-xl max-w-sm w-full text-center modal-content">
             <p id="modalMessage" class="text-gray-700 mb-4"></p>
             <button id="closeModalBtn" class="bg-blue-500 text-white py-2 px-4 rounded-lg hover:bg-blue-600">확인</button>
         </div>
@@ -280,6 +289,18 @@
         function showMessage(message) {
             if (messageModal) {
                 modalMessage.textContent = message;
+                
+                // 모바일에서 캔버스 상단에 가깝게 팝업을 띄우기 위한 위치 조정
+                if (window.innerWidth < 768) { // 모바일 환경 (Tailwind 'md' breakpoint)
+                    // 팝업을 중앙에서 캔버스 상단으로 끌어올림
+                    messageModal.style.justifyContent = 'flex-start'; 
+                    messageModal.style.paddingTop = '10vh'; // 상단에서 10% 지점에 위치
+                } else {
+                    // PC 환경에서는 화면 중앙에 위치
+                    messageModal.style.justifyContent = 'center';
+                    messageModal.style.paddingTop = '0';
+                }
+
                 messageModal.classList.remove('hidden');
                 messageModal.classList.add('flex'); // 중앙 정렬을 위해 flex로 표시
             } else {
@@ -291,6 +312,8 @@
             closeModalBtn.onclick = () => {
                 messageModal.classList.add('hidden');
                 messageModal.classList.remove('flex');
+                messageModal.style.paddingTop = '0'; // 초기 상태로 되돌림
+                messageModal.style.justifyContent = 'center'; // 초기 상태로 되돌림
             };
         }
 
@@ -818,6 +841,7 @@
         }
 
         function saveDrawing() {
+            // 캔버스 병합 및 블렌딩 (Multiply 모드)이 적용된 임시 캔버스를 가져옵니다.
             const tempCanvas = mergeCanvases();
             
             const image = tempCanvas.toDataURL("image/png");
