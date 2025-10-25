@@ -6,12 +6,16 @@
     <script src="https://cdn.tailwindcss.com"></script>
     <style>
         @import url('https://fonts.googleapis.com/css2?family=Noto+Sans+KR:wght@300;500;700&display=swap');
+        html, body { 
+            /* 전체 뷰포트 높이를 차지하도록 설정 */
+            height: 100%;
+        }
         body { 
             font-family: 'Noto Sans KR', sans-serif; 
             background-color: #f4f4f7; 
-            /* 내부 스크롤 허용: iframe 삽입 시 콘텐츠 전체가 보이도록 */
-            overflow-y: auto; 
-            min-height: fit-content;
+            /* 내부 스크롤을 강제로 막아 iframe 삽입 시 높이 인식을 유도 */
+            overflow: hidden; 
+            min-height: 100vh;
         } 
         .canvas-container {
             position: relative;
@@ -108,7 +112,7 @@
 
     <!-- Custom Brush Cursor --><div id="brushCursor" style="background-color: rgba(255, 255, 255, 0.2);"></div>
 
-    <div id="app" class="flex flex-col space-y-4">
+    <div id="app" class="flex flex-col space-y-4 min-h-screen"> <!-- min-h-screen 재적용 -->
 
         <!-- 1. Mobile Top Palette (NEW LOCATION & STRUCTURE) -->
         <div id="mobileTopPalette" class="flex flex-col space-y-3 mt-4 hidden md:!hidden"> 
