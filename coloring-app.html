@@ -6,7 +6,13 @@
     <script src="https://cdn.tailwindcss.com"></script>
     <style>
         @import url('https://fonts.googleapis.com/css2?family=Noto+Sans+KR:wght@300;500;700&display=swap');
-        body { font-family: 'Noto Sans KR', sans-serif; background-color: #f4f4f7; } 
+        body { 
+            font-family: 'Noto Sans KR', sans-serif; 
+            background-color: #f4f4f7; 
+            /* 내부 스크롤 제거: 삽입 환경(iframe)에서 스크롤을 제어해야 함 */
+            overflow: hidden; 
+            min-height: 100vh;
+        } 
         .canvas-container {
             position: relative;
             width: 100%;
@@ -86,7 +92,8 @@
         /* 모바일에서만 적용되는 위치 조정 (PC는 flex: center로 충분) */
         @media (max-width: 767px) {
             #messageModal .modal-content {
-                margin-top: -30vh; /* 화면 상단에서 30% 지점에 위치하도록 조정 */
+                /* 화면 중앙(50vh) 대신 상단 30% 위치에 고정 */
+                transform: translateY(-20%); 
             }
         }
     </style>
