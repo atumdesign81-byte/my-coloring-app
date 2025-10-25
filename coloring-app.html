@@ -9,9 +9,9 @@
         body { 
             font-family: 'Noto Sans KR', sans-serif; 
             background-color: #f4f4f7; 
-            /* 내부 스크롤 제거: 삽입 환경(iframe)에서 스크롤을 제어해야 함 */
-            overflow: hidden; 
-            min-height: 100vh;
+            /* 내부 스크롤 허용: iframe 삽입 시 콘텐츠 전체가 보이도록 */
+            overflow-y: auto; 
+            min-height: fit-content;
         } 
         .canvas-container {
             position: relative;
@@ -86,10 +86,16 @@
             display: none; /* JS에서 'flex'로 토글됨 */
             align-items: center;
             justify-content: center;
+            /* 스크롤 가능한 환경에서 fixed 대신 absolute 사용 */
+            position: fixed; 
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
         }
 
         /* 모달 내용 컨테이너: 캔버스 상단에 가깝게 위치하도록 조정 */
-        /* 모바일에서만 적용되는 위치 조정 (PC는 flex: center로 충분) */
+        /* 모바일에서만 적용되는 위치 조정 */
         @media (max-width: 767px) {
             #messageModal .modal-content {
                 /* 화면 중앙(50vh) 대신 상단 30% 위치에 고정 */
@@ -349,8 +355,8 @@
                     const btn = document.createElement('button');
                     // 모바일: 12x2열을 위해 크기 축소 (w-4 = 16px)
                     btn.className = isMobile 
-                        ? 'w-4 h-4 rounded-full border-2 border-gray-300 hover:scale-110 transition duration-100 ease-in-out'
-                        : 'w-6 h-6 md:w-8 md:h-8 rounded-full border-2 border-gray-300 hover:scale-110 transition duration-100 ease-in-out';
+                        ? 'w-4 h-4 rounded-full border-2 border-gray-300 hover:scale-110 transition duration-150 ease-in-out'
+                        : 'w-6 h-6 md:w-8 md:h-8 rounded-full border-2 border-gray-300 hover:scale-110 transition duration-150 ease-in-out';
                     btn.style.backgroundColor = color;
                     btn.onclick = () => {
                         setCurrentColor(color);
