@@ -15,16 +15,24 @@
             background-color: #f4f4f7; 
             /* 내부 스크롤 재허용: 하단 콘텐츠 잘림 방지 */
             overflow-y: auto; 
-            padding: 0.5rem; /* 전체 패딩을 줄여 모바일 공간 확보 */
+            padding: 0; /* 모바일에서 body 패딩 제거 */
         } 
         .canvas-container {
             position: relative;
             width: 100%;
             aspect-ratio: 210 / 297; /* A4 비율 (21cm x 29.7cm) 적용 */
-            margin: 0.5rem auto; /* 상하 마진 추가 */
+            margin: 0; /* 모바일에서 캔버스 컨테이너 상하 마진 제거 */
             box-shadow: 0 10px 30px rgba(0, 0, 0, 0.1);
             border-radius: 1rem;
             background-color: white; /* 캔버스 컨테이너 배경 */
+        }
+        @media (min-width: 768px) {
+            body {
+                padding: 2rem; /* PC 패딩 유지 */
+            }
+            .canvas-container {
+                margin: 0.5rem auto; /* PC 캔버스 컨테이너 상하 마진 유지 */
+            }
         }
         canvas {
             position: absolute;
